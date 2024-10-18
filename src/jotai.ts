@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
 interface Atom<AtomType> {
   get: () => AtomType;
@@ -27,10 +27,15 @@ export const atom = <T>(initialValue: T): Atom<T> => {
 };
 
 export const useAtom = <T>(atom: Atom<T>) => {
-  const [value, setValue] = useState(atom.get());
-  useEffect(() => {
-    const unsubscribe = atom.subscribe(setValue); // atom 内部调用 setValue，触发组件更新
-    return () => unsubscribe(); // 组件卸载，取消订阅 atom
-  }, [atom]);
+  /**
+   * 使用 useSyncExternalStore 替换 useState 和 useEffect
+   * atom.subscribe 用于收集“触发组件重新渲染的方法”
+   * atom.get 用户获取 atom 内部的状态
+   */
+  const value = useSyncExternalStore(atom.subscribe, atom.get);
   return [value, atom.set]; // 在调用 setAtom 时，实际调用的是 atom.set
+};
+
+export const useAtomValue = <T>(atom: Atom<T>) => {
+  return useSyncExternalStore(atom.subscribe, atom.get);
 };
