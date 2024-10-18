@@ -1,19 +1,46 @@
 import { useSyncExternalStore } from 'react';
 
-interface Atom<AtomType> {
-  get: () => AtomType;
-  set: (newValue: AtomType) => void;
-  subscribe: (callback: (newValue: AtomType) => void) => () => void;
+interface Atom<T> {
+  get: () => T;
+  set: (newValue: T) => void;
+  subscribe: (callback: (newValue: T) => void) => () => void;
 }
+type AtomGetter<T> = (get: <U>(atom: Atom<U>) => U) => T;
 
-export const atom = <T>(initialValue: T): Atom<T> => {
-  let value = initialValue;
+export const atom = <T>(initialValue: T | AtomGetter<T>): Atom<T> => {
+  let value = typeof initialValue === 'function' ? (null as T) : initialValue;
   const subscribers = new Set<(newValue: T) => void>();
+  const subscribed = new Set<Atom<any>>();
+
+  function get<Target>(atom: Atom<Target>) {
+    let currentValue = atom.get();
+    if (!subscribed.has(atom)) {
+      subscribed.add(atom);
+      atom.subscribe(newValue => {
+        if (currentValue === newValue) {
+          return;
+        }
+        currentValue = newValue;
+        computeValue();
+      });
+    }
+    return currentValue;
+  }
+  async function computeValue() {
+    const newValue =
+      typeof initialValue === 'function'
+        ? (initialValue as AtomGetter<T>)(get)
+        : value;
+    value = await newValue;
+    subscribers.forEach(callback => callback(value));
+  }
+  computeValue();
+
   return {
     get: () => value, // 访问状态
     set: (newValue): void => {
       value = newValue; // 更新状态并调用 callback
-      subscribers.forEach(callback => callback(value));
+      computeValue(); // 对 subscribers 的遍历被提取到 computeValue 中
     },
     subscribe: callback => {
       // 依赖收集
